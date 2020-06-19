@@ -12,7 +12,9 @@ import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyFactory;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
@@ -31,9 +33,17 @@ public class RSAFileUtils {
 	 */
 	public static int DEF_BLOCK_SIZE = 6;
 	/**
+	 * 
+	 */
+	public static int DEF_PART_SIZE = 2;
+	/**
+	 * 
+	 */
+	public static int DEF_LEN_SIZE = 4;
+	/**
 	 * 默认header大小
 	 */
-	public static int DEF_HEADER_SIZE = 4;
+	public static int DEF_HEADER_SIZE = DEF_PART_SIZE + DEF_LEN_SIZE;
 	
 	/***** ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓  常规/单线程  公钥加密/私钥解密文件  ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓ *****/
 	/**
@@ -111,8 +121,8 @@ public class RSAFileUtils {
 		FileInputStream input = FileUtils.openInputStream(sourceFile);
 		// 输出流
 		BufferedOutputStream output = new BufferedOutputStream(FileUtils.openOutputStream(destFile));
-		// 写入长度
-		output.write(ByteBuffer.allocate(DEF_HEADER_SIZE).putInt(size).array());
+		// 写入header
+		output.write(buildHeader(size, sourceFile.length()));
 		
 		// 私钥处理
 		KeyFactory keyFactory = RSAUtils.getKeyFactory();
@@ -124,6 +134,52 @@ public class RSAFileUtils {
 			ciphers[i].init(Cipher.ENCRYPT_MODE, privKey);
 		}
 		convertFastFile(size, RSAUtils.MAX_ENCRYPT_BLOCK, ciphers, input, output);
+	}
+	
+	/**
+	 * 
+	 * @param partSize
+	 * @param len
+	 * @return
+	 */
+	public static byte[] buildHeader(Integer partSize, Long len) {
+		if (partSize > Short.MAX_VALUE) {
+			throw new IllegalArgumentException("长度超限");
+		}
+		if (len > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("长度超限");
+		}
+		byte[] b1 = ByteBuffer.allocate(DEF_PART_SIZE).putShort(partSize.shortValue()).array();
+		byte[] b2 = ByteBuffer.allocate(DEF_LEN_SIZE).putInt(len.intValue()).array();
+
+		byte[] res = new byte[DEF_HEADER_SIZE];
+		System.arraycopy(b1, 0, res, 0, b1.length);
+		System.arraycopy(b2, 0, res, b1.length, b2.length);
+
+		return res;
+	}
+
+	/**
+	 * 
+	 * @param input
+	 * @return 
+	 * @throws IOException
+	 */
+	public static Map<String, Integer> readHeader(InputStream input) throws IOException {
+		byte[] partBytes = new byte[DEF_PART_SIZE];
+		readEnough(input, partBytes);
+		int size = ByteBuffer.wrap(partBytes).getShort();
+
+		byte[] lenBytes = new byte[DEF_LEN_SIZE];
+		readEnough(input, lenBytes);
+		
+		int len = ByteBuffer.wrap(lenBytes).getInt();
+
+		Map<String, Integer> result = new HashMap<>();
+		result.put("partSize", size);
+		result.put("len", len);
+
+		return result;
 	}
 	
 	
@@ -144,11 +200,47 @@ public class RSAFileUtils {
 		FileInputStream input = FileUtils.openInputStream(sourceFile);
 		// 输出流
 		BufferedOutputStream output = new BufferedOutputStream(FileUtils.openOutputStream(destFile));
-//		OutputStream output = FileUtils.openOutputStream(FileUtils.getFile(destPath));
-		byte[] header = new byte[DEF_HEADER_SIZE];
-		input.read(header);
+		
+		decryptFastFile(privateKey, input, output);
+	}
+	
+	
+	/**
+	 * 
+	 * @param <R>
+	 * @param privateKey
+	 * @param input
+	 * @param output
+	 * @throws GeneralSecurityException
+	 * @throws IOException
+	 * @throws InterruptedException
+	 * @throws ExecutionException
+	 */
+	public static <R> void decryptFastFile(String privateKey, InputStream input, OutputStream output)
+			throws GeneralSecurityException, IOException, InterruptedException, ExecutionException {
+		// 读 header
+		Map<String, Integer> header = readHeader(input);
+		decryptFastFile(privateKey, input, output, header);
+	}
+	
+	
+	/**
+	 * 解密文件
+	 * @param privateKey
+	 * @param input
+	 * @param output
+	 * @throws GeneralSecurityException
+	 * @throws IOException
+	 * @throws InterruptedException
+	 * @throws ExecutionException
+	 */
+	public static <R> void decryptFastFile(String privateKey, InputStream input, OutputStream output, Map<String, Integer> header)
+			throws GeneralSecurityException, IOException, InterruptedException, ExecutionException {
 		// 线程数
-		int size = ByteBuffer.wrap(header).getInt();
+		int size = header.get("partSize");
+		if (size > 128) {
+			throw new IllegalArgumentException("size greater than 128");
+		}
 		// 私钥处理
 		KeyFactory keyFactory = RSAUtils.getKeyFactory();
 		Key privKey = RSAUtils.getPrivateKey(privateKey);
@@ -160,6 +252,7 @@ public class RSAFileUtils {
 		}
 		convertFastFile(size, RSAUtils.MAX_DECRYPT_BLOCK, ciphers, input, output);
 	}
+	
 	
 	/**
 	 * 
@@ -201,27 +294,30 @@ public class RSAFileUtils {
 	public static void convertFastFile(ExecutorService executor, int size, int blockSize, Cipher[] ciphers, InputStream input, OutputStream output)
 			throws GeneralSecurityException, IOException, InterruptedException, ExecutionException {
 		try {
+			Integer batchSize = blockSize * size;
 			// 用于读取流
-			byte[] cache = new byte[blockSize * size];
+			byte[] buffer = new byte[batchSize];
 			// task 列表
 			List<Callable<byte[]>> tasks = new ArrayList<>(size);
 			// 读取到的长度
 			int readLen;
-			while ((readLen = input.read(cache)) != -1) {
+			
+			while ((readLen = readEnough(input, buffer)) != -1) {
+				final int rLen = readLen;
 				for (int i = 0; i < size; i++) {
 					final int j = i;
-					final int rLen = readLen;
 					final int offset = j * blockSize;
-					if(rLen > offset) {
+					if (rLen > offset) {
 						tasks.add(new Callable<byte[]>() {
 							@Override
 							public byte[] call() throws Exception {
 								int len = rLen - offset > blockSize ? blockSize : rLen - offset;
 								try {
-									return ciphers[j].doFinal(cache, offset, len);
+									return ciphers[j].doFinal(buffer, offset, len);
 								} catch (Exception e) {
-									System.out.println(Thread.currentThread().getId() + "] j : " + j + "  offset:" + offset
-											+ " len :" + len + "  e: " + e.getMessage());
+									System.out.println(Thread.currentThread().getId() + "] j : " + j + "  offset:"
+											+ offset + " len :" + len + "  e: " + e.getMessage());
+//										throw new IllegalArgumentException("");
 								}
 								return null;
 							}
@@ -247,7 +343,8 @@ public class RSAFileUtils {
 				executor.shutdown();
 			}
 			if (output != null) {
-				output.close();
+//				output.flush();
+//				output.close();
 			}
 			if (input != null) {
 				input.close();
@@ -256,4 +353,30 @@ public class RSAFileUtils {
 	}
 	/***** ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑  多线程  公钥加密/私钥解密文件  ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑ *****/
 	
+	
+	/**
+	 * 
+	 * @param input
+	 * @param buffer
+	 * @return 
+	 * @throws IOException 
+	 */
+	public static int readEnough(InputStream input, byte[] buffer) throws IOException {
+		// 实际长度
+		int rlen = 0;
+		// 读取到的长度
+		int len = 0;
+
+		int maxLen = buffer.length;
+		while ((len = input.read(buffer, rlen, maxLen - rlen)) != -1) {
+			rlen = rlen + len;
+			if (rlen >= maxLen) {
+				return len;
+			}
+		}
+		if (rlen == 0 && len == -1) {
+			return -1;
+		}
+		return rlen;
+	}
 }
