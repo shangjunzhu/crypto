@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * 集合转换工具
@@ -19,35 +20,49 @@ public class CollectionConvertUtils {
 	 * 将集合转换为 map
 	 * @param <K>
 	 * @param <T>
-	 * @param list
+	 * @param coll
 	 * @return
 	 */
-	public static <K, T extends ITree<K, T>> Map<K, List<T>> convert2Map(Collection<T> list) {
-		return convert2Map(list, o -> o.getPKey());
+	public static <K, T extends ITree<K, T>> Map<K, List<T>> convert2Map(Collection<T> coll) {
+		return convert2Map(coll, o -> o.getPKey());
 	}
 
 	/**
 	 * 将集合转换为 map
 	 * @param <K>
 	 * @param <T>
-	 * @param list
+	 * @param coll
 	 * @param fun
 	 * @return
 	 */
-	public static <K, T> Map<K, List<T>> convert2Map(Collection<T> list, Function<T, K> fun) {
-		if (list == null || list.size() < 1) {
+	public static <K, T> Map<K, List<T>> convert2Map(Collection<T> coll, Function<T, K> fun) {
+		return convert2Map(coll, fun, null);
+	}
+	
+	/**
+	 * 将集合转换为 map
+	 * @param <K>
+	 * @param <T>
+	 * @param coll
+	 * @param fun
+	 * @return
+	 */
+	public static <K, T> Map<K, List<T>> convert2Map(Collection<T> coll, Function<T, K> fun, Predicate<? super T> predicate) {
+		if (coll == null || coll.size() < 1) {
 			return null;
 		}
 		Map<K, List<T>> m = new HashMap<K, List<T>>();
 		List<T> c = null;
-		for (T o : list) {
-			K k = fun.apply(o);
-			c = m.get(k);
-			if (c == null) {
-				c = new ArrayList<>();
-				m.put(k, c);
+		for (T o : coll) {
+			if(predicate != null && predicate.test(o)) {
+				K k = fun.apply(o);
+				c = m.get(k);
+				if (c == null) {
+					c = new ArrayList<>();
+					m.put(k, c);
+				}
+				c.add(o);
 			}
-			c.add(o);
 		}
 		return m;
 	}
