@@ -26,11 +26,16 @@ public class RSAFileUtilsTest {
 
 	public void testEncrypt(String name, boolean isFast)
 			throws IOException, GeneralSecurityException, InterruptedException, ExecutionException {
-		String sourcePath = "/logo.jpg";
-		String destPath = "/logo.jpg.enc";
-		String decPath = "/logo_dec.jpg";
+//		String basePath = RSAFileUtilsTest.class.getResource("/").getPath();
+		String basePath = "C:\\Users\\Administrator\\Downloads\\";
+		
+		String sourcePath = "test01.jpg";
+		String destPath = "/test011111.jpg.enc";
+		String decPath = "/test011111.jpg";
 //		
-		String basePath = RSAFileUtilsTest.class.getResource("/").getPath();
+		System.out.println(basePath);
+		
+		
 		File sourceFile = new File(basePath + sourcePath);
 		File destFile = new File(basePath + destPath);
 		File decFile = new File(basePath + decPath);

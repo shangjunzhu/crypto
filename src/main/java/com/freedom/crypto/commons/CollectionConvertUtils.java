@@ -17,7 +17,8 @@ import java.util.function.Predicate;
 public class CollectionConvertUtils {
 	
 	/**
-	 * 将集合转换为 map
+	 * 根据 pkey 进行分组
+	 * 
 	 * @param <K>
 	 * @param <T>
 	 * @param coll
@@ -28,7 +29,7 @@ public class CollectionConvertUtils {
 	}
 
 	/**
-	 * 将集合转换为 map
+	 * 根据 pkey 进行分组 
 	 * @param <K>
 	 * @param <T>
 	 * @param coll
@@ -40,7 +41,7 @@ public class CollectionConvertUtils {
 	}
 	
 	/**
-	 * 将集合转换为 map
+	 * 根据 pkey 进行分组 
 	 * @param <K>
 	 * @param <T>
 	 * @param coll
@@ -54,7 +55,7 @@ public class CollectionConvertUtils {
 		Map<K, List<T>> m = new HashMap<K, List<T>>();
 		List<T> c = null;
 		for (T o : coll) {
-			if(predicate != null && predicate.test(o)) {
+			if(predicate == null || (predicate != null && predicate.test(o))) {
 				K k = fun.apply(o);
 				c = m.get(k);
 				if (c == null) {
@@ -70,7 +71,8 @@ public class CollectionConvertUtils {
 	
 	
 	/**
-	 * 将集合转换为 tree
+	 * 
+	 * 将集合转换为 tree 必须要有一个root 节点
 	 * @param <K>
 	 * @param <T>
 	 * @param list
@@ -81,7 +83,7 @@ public class CollectionConvertUtils {
 		RootHolder<T> holder = new RootHolder<>();
 		Function<T, K> callback = (T o) -> {
 			K k = o.getKey();
-			if (k != null && k.equals(rootId)) {
+			if (k == rootId || k.equals(rootId)) {
 				holder.setRoot(o);
 			}
 			return o.getPKey();

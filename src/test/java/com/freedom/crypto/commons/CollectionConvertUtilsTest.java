@@ -16,11 +16,11 @@ public class CollectionConvertUtilsTest {
 
 	private List<TestData> getTestData() {
 		List<TestData> list = new ArrayList<>();
-		list.add(new TestData(null, 0, "name0"));
+//		list.add(new TestData(null, 0, "name0"));
 		
-		list.add(new TestData(0, 1, "name1"));
-		list.add(new TestData(0, 2, "name2"));
-		list.add(new TestData(0, 3, "name3"));
+		list.add(new TestData(null, 1, "name1"));
+		list.add(new TestData(null, 2, "name2"));
+		list.add(new TestData(null, 3, "name3"));
 
 		list.add(new TestData(1, 11, "name11"));
 		list.add(new TestData(1, 12, "name12"));
@@ -50,7 +50,7 @@ public class CollectionConvertUtilsTest {
 	@Test
 	public void test2Tree() throws JsonProcessingException {
 		List<TestData> list = getTestData();
-		TestData testData = CollectionConvertUtils.convert2Tree(list, 1);
+		TestData testData = CollectionConvertUtils.convert2Tree(list, null);
 		
 		ObjectMapper mapper = new ObjectMapper();
 		String jsonStr = mapper.writeValueAsString(testData);
